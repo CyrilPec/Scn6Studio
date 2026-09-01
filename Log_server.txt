@@ -1,0 +1,137 @@
+SCN6 PROJECT — CONTINUE FROM HERE
+
+We are building a Blender SCN6 controller using this architecture:
+
+Blender 64-bit
+→ bridge_node.py
+→ scn6_server.py running under Python 3.12 32-bit
+→ scn6_dll.py
+→ Tmbscom.DLL
+→ SCN6 controller
+
+Important:
+
+Blender must NOT import scn6_dll.
+Hardware communication belongs in scn6_server.py.
+bridge_node.py uses a latest-value command buffer.
+SCN6 trajectory should use bridge.queue_move(), NOT bridge.move().
+Goal: do NOT restart Blender every time code changes.
+We want clean addon reload/unregister/re-register while keeping the external server alive when possible.
+
+CURRENT bridge_node.py:
+
+Has SCN6Bridge.
+Starts scn6_server.py using:
+C:\Users\DarkLight\AppData\Local\Programs\Python\Python312-32\python.exe
+Has queue_move(axis, position).
+command_queue stores latest position per axis.
+communication loop sends changed positions every 0.05 sec.
+connected is tracked separately from running.
+initialize() does:
+start()
+ping()
+connect()
+move() still exists for direct/manual commands, but trajectory nodes must NOT use it.
+
+CURRENT scn6_node_v4.py:
+
+Version updated to use:
+bridge.queue_move(axis=int(self.axis), position=command)
+It checks:
+bridge.running
+bridge.connected
+bridge.initializing
+It should therefore no longer flood the server with direct move() calls.
+It has Enabled and ARM safety controls.
+Default ARM=False.
+Axis source can be LOC_X/Y/Z or ROT_X/Y/Z.
+Mapping supports scale, offset, inversion and min/max limits.
+
+PROBLEM OBSERVED:
+
+At first, server was not connected:
+
+[SCN6_SERVER] position failed: SCN6 controller is not connected.
+
+Then initialization was attempted:
+
+[SCN6_BRIDGE] SEND {"id":104,"cmd":"connect"}
+[SCN6_SERVER] connect failed: TMBSCOM initialization timed out (state=3, state_name=TMBS_OPENING, history=[0, 0])
+[SCN6_BRIDGE] RECV {"id":104,"ok":false,"error":"TMBSCOM initialization timed out (state=3, state_name=TMBS_OPENING, history=[0, 0])"}
+
+Then a later attempt succeeded:
+
+[SCN6_BRIDGE] SEND {"id":109,"cmd":"connect"}
+[SCN6_BRIDGE] RECV {"id":109,"ok":true,"result":{"connected":true,"already_connected":false,"communication_state":4,"axes":[0],"initialization_history":[0,1]}}
+[SCN6_BRIDGE] SCN6 controller connected
+[SCN6_BRIDGE] communication_state: 4
+[SCN6_BRIDGE] axes: [0]
+
+After that movement worked:
+
+[SCN6_BRIDGE] SEND {"id":158,"cmd":"move","axis":0,"position":0}
+[SCN6_BRIDGE] RECV {"id":158,"ok":true,"result":{"axis":0,"position":0,"result":1,"accepted":true}}
+
+Then:
+
+[SCN6_BRIDGE] SEND {"id":165,"cmd":"move","axis":0,"position":-120}
+[SCN6_BRIDGE] SEND {"id":166,"cmd":"move","axis":0,"position":-240}
+[SCN6_BRIDGE] SEND {"id":167,"cmd":"move","axis":0,"position":-430}
+[SCN6_BRIDGE] SEND {"id":168,"cmd":"move","axis":0,"position":-540}
+[SCN6_BRIDGE] SEND {"id":169,"cmd":"move","axis":0,"position":-1120}
+[SCN6_BRIDGE] SEND {"id":170,"cmd":"move","axis":0,"position":-1270}
+[SCN6_BRIDGE] SEND {"id":171,"cmd":"move","axis":0,"position":-1420}
+
+These moves were accepted by the controller.
+
+IMPORTANT SECOND PROBLEM:
+
+There was a huge repeated stream of:
+
+[SCN6_BRIDGE] SEND {"id":110,"cmd":"position","axis":0}
+...
+[SCN6_BRIDGE] SEND {"id":157,"cmd":"position","axis":0}
+
+Responses showed:
+
+{"axis":0,"position":{"axis":0,"position":1,"error":null},"error":null}
+
+Then after movement:
+
+{"axis":0,"position":{"axis":0,"position":-1420,"error":null},"error":null}
+
+The supplied scn6_node_v4.py does NOT call get_position() or position().
+Therefore another part of the addon/code is repeatedly calling:
+
+bridge.get_position(0)
+
+
+or:
+
+bridge.position(...)
+
+
+We need to FIND THAT SOURCE and stop the position polling flood.
+
+Also note:
+
+bridge_node.py send() currently holds self.lock while waiting for the response. This may need to be redesigned because it can create unnecessary lock contention.
+
+NEXT TASK:
+
+Fix/find the source of repeated position commands.
+Make bridge communication robust against temporary TMBSCOM initialization timeout.
+Make addon reload possible without restarting Blender.
+Keep the external SCN6 server alive when reloading Blender Python code where practical.
+Preserve latest-value trajectory behavior.
+Avoid duplicate move commands.
+Do not change the working hardware architecture.
+Do not import scn6_dll into Blender.
+
+Last known hardware state:
+
+SCN6 controller connected successfully.
+Axis detected: [0]
+Communication state: 4
+Last tested position: -1420
+Move commands were accepted successfully.
