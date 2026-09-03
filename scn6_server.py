@@ -210,6 +210,13 @@ class SCN6Server:
     # ------------------------------------------------------------------
 
     def disconnect(self):
+        """
+        Disconnect the SCN6 controller through the high-level API.
+
+        TmbsController.disconnect() owns the hardware shutdown and
+        controller state cleanup. The server should not bypass that API
+        by calling close_tmbs() directly.
+        """
 
         if self.controller is None:
             return {
@@ -218,26 +225,17 @@ class SCN6Server:
             }
 
         try:
+            result = self.controller.disconnect()
 
-            close_tmbs = getattr(
-                self.controller,
-                "close_tmbs",
-                None,
-            )
-
-            result = None
-
-            if callable(close_tmbs):
-                result = close_tmbs()
+            return {
+                "connected": False,
+                "result": result,
+            }
 
         finally:
-
+            # The server no longer owns a usable controller instance
+            # after disconnect, even if the DLL call raised an exception.
             self.controller = None
-
-        return {
-            "connected": False,
-            "result": result,
-        }
 
     # ------------------------------------------------------------------
     # Axis discovery
