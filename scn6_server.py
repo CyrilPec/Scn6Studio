@@ -245,14 +245,7 @@ class SCN6Server:
 
         controller = self.require_controller()
 
-        result = []
-
-        for axis_number, axis_state in controller.axes.items():
-
-            if axis_state.connected:
-                result.append(axis_number)
-
-        return result
+        return controller.connected_axes()
 
     # ------------------------------------------------------------------
     # Axis information
