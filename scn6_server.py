@@ -255,27 +255,7 @@ class SCN6Server:
 
         controller = self.require_controller()
 
-        result = {}
-
-        for axis_number, axis_state in controller.axes.items():
-
-            result[str(axis_number)] = {
-                "axis": axis_number,
-                "connected": bool(
-                    axis_state.connected
-                ),
-                "commanded_position": (
-                    axis_state.commanded_position
-                ),
-                "prepared_motion": (
-                    axis_state.prepared_motion
-                ),
-                "prepared_value": (
-                    axis_state.prepared_value
-                ),
-            }
-
-        return result
+        return controller.axis_info()
 
     # ------------------------------------------------------------------
     # Position
