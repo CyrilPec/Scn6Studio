@@ -14,16 +14,10 @@ class CommandRequest(BaseModel):
     name: str
     args: dict[str, Any] = Field(default_factory=dict)
 
-def require_controller() -> TmbsController:
+def get_controller() -> TmbsController:
     if _controller is None or not _controller.initialized:
         raise HTTPException(503, "SCN6 controller is not initialized")
     return _controller
-
-def ok(result: Any = None) -> dict:
-    response = {"ok": True}
-    if result is not None:
-        response["result"] = result
-    return response
 
 @app.get("/")
 def root():
@@ -35,17 +29,25 @@ def health():
 
 @app.post("/command")
 def command(request: CommandRequest):
-    global controller
+    global _controller
     name = request.name
     args = request.args
     try:
-        with lock:
+        with _lock:
             if name == "ping":
                 return {"ok": True, "result": "pong"}
             if name == "connect":
-                return connect()
+                if _controller is not None and _controller.initialized:
+                    return {"ok": True, "result": {"connected": True, "already_connected": True}}
+                _controller = TmbsController()
+                history = _controller.initialize()
+                return {"ok": True, "result": {"connected": True, "initialization_history": history, "communication": _controller.communication_info(), "axes": _controller.connected_axes()}}
             if name == "disconnect":
-                return disconnect()
+                if _controller is None:
+                    return {"ok": True, "result": {"connected": False}}
+                result = _controller.disconnect()
+                _controller = None
+                return {"ok": True, "result": {"connected": False, "result": result}}
             c = get_controller()
             if name == "axes":
                 return {"ok": True, "result": c.connected_axes()}
