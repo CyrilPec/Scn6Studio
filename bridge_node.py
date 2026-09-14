@@ -151,7 +151,6 @@ class SCN6Bridge:
                 self.log("communication loop error: " + str(exc))
                 time.sleep(COMMUNICATION_INTERVAL)
         self.log("communication loop stopped")
-
     def send(self, command, timeout=30.0, **arguments):
         with self.send_lock:
             if not self.running:
@@ -167,6 +166,22 @@ class SCN6Bridge:
                 raise RuntimeError(response.get("error", response.get("detail", "SCN6 server error.")))
             return response
 
+    def stop_all(self):
+        with self.lock:
+            axes = list(self.active_axes)
+            self.command_queue.clear()
+
+        for axis in axes:
+            try:
+                self.stop_axis(axis)
+            except Exception as exc:
+                self.last_error = str(exc)
+
+        with self.lock:
+            self.last_sent.clear()
+            self.active_axes.clear()
+
+    
     def initialize(self):
         self.initializing = True
         self.last_error = ""
