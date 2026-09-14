@@ -107,6 +107,9 @@ class SCN6Bridge:
         self.communication_running = True
         self.communication_thread = threading.Thread(target=self._communication_loop, daemon=True)
         self.communication_thread.start()
+        
+    def communication(self):
+        return self.send("communication")
 
     def queue_move(self, axis, position):
         axis = int(axis)
