@@ -1,4 +1,6 @@
-
+for python 64 :
+requests
+for python 32:
 fastapi
 uvicorn
 pydantic
