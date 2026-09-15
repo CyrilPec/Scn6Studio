@@ -1,6 +1,6 @@
 """
 scn6_node_v5.py
-SCN6 Blender controller with direct FastAPI communication.
+SCN6 Blender controller with FastAPI communication.
 Architecture:
     Blender Object
          |
@@ -16,6 +16,12 @@ Architecture:
     scn6_server.py
          |
          v
+    scn6_service.py
+         |
+         v
+    scn6_controller.py
+         |
+         v
     scn6_dll.py
          |
          v
@@ -27,16 +33,16 @@ The Blender node never imports scn6_dll and never communicates with TMBSCOM dire
 """
 from __future__ import annotations
 import bpy
-import json
 import threading
 import time
-import urllib.request
-import urllib.error
-from bpy.types import Node, NodeTree, NodeSocket
-from bpy.props import IntProperty, FloatProperty, BoolProperty, PointerProperty, EnumProperty, StringProperty
+import httpx
+from bpy.types import Node, NodeSocket
+from bpy.props import IntProperty, FloatProperty, BoolProperty, PointerProperty, EnumProperty
 SERVER_URL = "http://127.0.0.1:8000"
 SEND_INTERVAL = 0.05
 STATUS_INTERVAL = 0.5
+HTTP_TIMEOUT = 2.0
+MOVE_TIMEOUT = 1.0
 SOURCE_ITEMS = (
     ("LOC_X", "Location X", "Use object X location"),
     ("LOC_Y", "Location Y", "Use object Y location"),
@@ -51,63 +57,57 @@ class SCN6ApiClient:
         self.lock = threading.RLock()
         self.last_error = ""
         self.last_status = {}
+        self.last_status_time = 0.0
         self.running = True
         self.pending = {}
         self.worker = threading.Thread(target=self._worker, name="SCN6-HTTP", daemon=True)
         self.worker.start()
-    def _request(self, method, path, payload=None, timeout=2.0):
+    def _request(self, method, path, payload=None, timeout=HTTP_TIMEOUT):
         url = self.base_url + path
-        data = None
-        headers = {"Accept": "application/json"}
-        if payload is not None:
-            data = json.dumps(payload).encode("utf-8")
-            headers["Content-Type"] = "application/json"
-        request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                raw = response.read()
-                if not raw:
-                    return {}
-                return json.loads(raw.decode("utf-8"))
-        except urllib.error.HTTPError as exc:
+            response = httpx.request(method, url, json=payload, timeout=timeout)
+            response.raise_for_status()
+            if not response.content:
+                return {}
+            return response.json()
+        except httpx.HTTPStatusError as exc:
             try:
-                body = exc.read().decode("utf-8")
-                detail = json.loads(body).get("detail", body)
+                detail = exc.response.json().get("detail", exc.response.text)
             except Exception:
-                detail = str(exc)
-            raise RuntimeError(f"HTTP {exc.code}: {detail}")
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f"Server unavailable: {exc.reason}")
+                detail = exc.response.text
+            raise RuntimeError(f"HTTP {exc.response.status_code}: {detail}")
+        except httpx.ConnectError as exc:
+            raise RuntimeError(f"Server unavailable: {exc}")
+        except httpx.TimeoutException:
+            raise RuntimeError(f"HTTP timeout: {path}")
+        except httpx.RequestError as exc:
+            raise RuntimeError(f"HTTP request error: {exc}")
+        except ValueError as exc:
+            raise RuntimeError(f"Invalid JSON response from {path}: {exc}")
+    def _store_result(self, result):
+        with self.lock:
+            self.last_status = result
+            self.last_status_time = time.monotonic()
+            self.last_error = ""
+        return result
+    def _store_error(self, exc):
+        with self.lock:
+            self.last_error = str(exc)
     def status(self):
         result = self._request("GET", "/status")
-        with self.lock:
-            self.last_status = result
-            self.last_error = ""
-        return result
+        return self._store_result(result)
     def initialize(self):
         result = self._request("POST", "/initialize", {})
-        with self.lock:
-            self.last_status = result
-            self.last_error = ""
-        return result
+        return self._store_result(result)
     def disconnect(self):
         result = self._request("POST", "/disconnect", {})
-        with self.lock:
-            self.last_status = result
-            self.last_error = ""
-        return result
+        return self._store_result(result)
     def arm(self):
         result = self._request("POST", "/arm", {"armed": True})
-        with self.lock:
-            self.last_status = result
-            self.last_error = ""
-        return result
+        return self._store_result(result)
     def disarm(self):
         result = self._request("POST", "/disarm", {})
-        with self.lock:
-            self.last_status = result
-            self.last_error = ""
-        return result
+        return self._store_result(result)
     def position(self, axis):
         return self._request("GET", f"/axes/{int(axis)}/position")
     def axis_status(self, axis):
@@ -121,28 +121,45 @@ class SCN6ApiClient:
     def clear(self):
         with self.lock:
             self.pending.clear()
+    def get_pending(self):
+        with self.lock:
+            return dict(self.pending)
+    def _poll_status(self):
+        now = time.monotonic()
+        with self.lock:
+            if now - self.last_status_time < STATUS_INTERVAL:
+                return
+        try:
+            result = self._request("GET", "/status", timeout=HTTP_TIMEOUT)
+            with self.lock:
+                self.last_status = result
+                self.last_status_time = now
+                self.last_error = ""
+        except Exception as exc:
+            self._store_error(exc)
+    def _send_commands(self):
+        commands = self.get_pending()
+        for axis, position in commands.items():
+            if not self.running:
+                return
+            try:
+                self._request("POST", "/move", {"axis": axis, "position": position}, timeout=MOVE_TIMEOUT)
+                with self.lock:
+                    if self.pending.get(axis) == position:
+                        self.pending.pop(axis, None)
+                    self.last_error = ""
+            except Exception as exc:
+                self._store_error(exc)
     def _worker(self):
         while self.running:
             started = time.monotonic()
             try:
-                with self.lock:
-                    commands = dict(self.pending)
-                for axis, position in commands.items():
-                    try:
-                        self._request("POST", "/move", {"axis": axis, "position": position}, timeout=1.0)
-                        with self.lock:
-                            if self.pending.get(axis) == position:
-                                self.pending.pop(axis, None)
-                            self.last_error = ""
-                    except Exception as exc:
-                        with self.lock:
-                            self.last_error = str(exc)
-                elapsed = time.monotonic() - started
-                time.sleep(max(0.001, SEND_INTERVAL - elapsed))
+                self._send_commands()
+                self._poll_status()
             except Exception as exc:
-                with self.lock:
-                    self.last_error = str(exc)
-                time.sleep(SEND_INTERVAL)
+                self._store_error(exc)
+            elapsed = time.monotonic() - started
+            time.sleep(max(0.001, SEND_INTERVAL - elapsed))
     def stop(self):
         self.running = False
         self.clear()
@@ -194,8 +211,14 @@ class SCN6_OT_Disconnect(bpy.types.Operator):
         try:
             api = get_api()
             api.clear()
-            api.disarm()
+            try:
+                api.disarm()
+            except Exception:
+                pass
             api.disconnect()
+            for node in get_scn6_nodes():
+                node.armed = False
+                node.connected = False
             self.report({"INFO"}, "SCN6 controller disconnected.")
         except Exception as exc:
             self.report({"ERROR"}, f"SCN6 disconnect error: {exc}")
@@ -203,12 +226,12 @@ class SCN6_OT_Disconnect(bpy.types.Operator):
 class SCN6_OT_Arm(bpy.types.Operator):
     bl_idname = "scn6.arm"
     bl_label = "ARM SCN6"
-    bl_description = "Enable SCN6 motion on the server"
+    bl_description = "Enable SCN6 software motion permission on the server"
     def execute(self, context):
         try:
             result = get_api().arm()
             if result.get("armed"):
-                self.report({"INFO"}, "SCN6 ARMED.")
+                self.report({"INFO"}, "SCN6 server ARMED.")
             else:
                 self.report({"ERROR"}, "SCN6 failed to arm.")
         except Exception as exc:
@@ -217,7 +240,7 @@ class SCN6_OT_Arm(bpy.types.Operator):
 class SCN6_OT_Disarm(bpy.types.Operator):
     bl_idname = "scn6.disarm"
     bl_label = "DISARM SCN6"
-    bl_description = "Disable SCN6 motion and clear pending commands"
+    bl_description = "Disable SCN6 software motion permission and clear pending commands"
     def execute(self, context):
         try:
             api = get_api()
@@ -226,7 +249,7 @@ class SCN6_OT_Disarm(bpy.types.Operator):
             for node in get_scn6_nodes():
                 node.armed = False
             if not result.get("armed", True):
-                self.report({"INFO"}, "SCN6 DISARMED.")
+                self.report({"INFO"}, "SCN6 server DISARMED.")
             else:
                 self.report({"ERROR"}, "SCN6 failed to disarm.")
         except Exception as exc:
@@ -332,14 +355,28 @@ class SCN6AxisNode(Node):
             self.last_command = command
             api.queue_move(self.axis, command)
         except Exception as exc:
+            api.clear_axis(self.axis)
             print("[SCN6] command error:", exc)
     def update_actual(self):
         try:
             api = get_api()
             status = api.last_status
             self.connected = bool(status.get("initialized", False))
-        except Exception:
+            if not self.connected:
+                self.actual_position = 0.0
+                return
+            result = api.position(self.axis)
+            if isinstance(result, dict):
+                if result.get("position") is not None:
+                    self.actual_position = float(result["position"])
+                elif result.get("value") is not None:
+                    self.actual_position = float(result["value"])
+            elif isinstance(result, (int, float)):
+                self.actual_position = float(result)
+        except Exception as exc:
             self.connected = False
+            api = get_api()
+            api._store_error(exc)
     def update(self):
         try:
             self.calculate_command()
@@ -406,137 +443,56 @@ class SCN6AxisNode(Node):
             row = layout.row()
             row.alert = True
             row.label(text="COMMAND CLAMPED", icon="ERROR")
-        layout.label(text=f"Axis: {self.axis}")
-        if self.armed:
-            layout.label(text="MOTION ENABLED", icon="REC")
-        else:
-            layout.label(text="Motion disarmed", icon="PAUSE")
     def draw_label(self):
-        if self.target_object:
-            return f"SCN6 {self.axis} < {self.target_object.name} {self.source}"
         return f"SCN6 Axis {self.axis}"
-class SCN6NodeTree(NodeTree):
-    bl_idname = "SCN6NodeTree"
-    bl_label = "SCN6"
-    bl_icon = "PLUGIN"
 def get_scn6_nodes():
-    result = []
+    nodes = []
+    for scene in bpy.data.scenes:
+        for node_group in scene.node_tree.nodes if scene.node_tree else []:
+            if isinstance(node_group, SCN6AxisNode):
+                nodes.append(node_group)
+    for node_group in bpy.data.node_groups:
+        if hasattr(node_group, "nodes"):
+            for node in node_group.nodes:
+                if isinstance(node, SCN6AxisNode):
+                    nodes.append(node)
+    return nodes
+def update_scn6_nodes():
+    api = get_api()
     try:
-        for node_group in bpy.data.node_groups:
-            try:
-                for node in node_group.nodes:
-                    if node.bl_idname == SCN6AxisNode.bl_idname:
-                        result.append(node)
-            except Exception:
-                continue
+        status = api.last_status
+        initialized = bool(status.get("initialized", False))
     except Exception:
-        pass
-    return result
-def scn6_trajectory_timer():
-    try:
-        nodes = get_scn6_nodes()
-        any_armed = any(node.enabled and node.armed for node in nodes)
-        api = get_api()
-        if any_armed:
-            try:
-                if not api.last_status.get("armed", False):
-                    api.arm()
-            except Exception as exc:
-                with api.lock:
-                    api.last_error = str(exc)
-        else:
-            try:
-                if api.last_status.get("armed", False):
-                    api.clear()
-                    api.disarm()
-            except Exception as exc:
-                with api.lock:
-                    api.last_error = str(exc)
-        for node in nodes:
-            try:
-                node.update_command()
-            except Exception as exc:
-                print("[SCN6] node update error:", exc)
-        now = time.monotonic()
-        if not hasattr(scn6_trajectory_timer, "_last_status"):
-            scn6_trajectory_timer._last_status = 0.0
-        if now - scn6_trajectory_timer._last_status >= STATUS_INTERVAL:
-            scn6_trajectory_timer._last_status = now
-            try:
-                api.status()
-            except Exception as exc:
-                with api.lock:
-                    api.last_error = str(exc)
-        for node in nodes:
-            try:
-                node.update_actual()
-            except Exception:
-                pass
-    except Exception as exc:
-        print("[SCN6] trajectory timer error:", exc)
-    return 0.02
-def scn6_node_menu(self, context):
-    try:
-        self.layout.operator("node.add_node", text="SCN6 Axis", icon="DRIVER").type = SCN6AxisNode.bl_idname
-    except Exception:
-        pass
+        initialized = False
+    for node in get_scn6_nodes():
+        node.connected = initialized
+        try:
+            node.update_command()
+            node.update_actual()
+        except Exception as exc:
+            node.connected = False
+            api._store_error(exc)
+    return 0.1
 classes = (
     SCN6ValueSocket,
-    SCN6AxisNode,
-    SCN6NodeTree,
     SCN6_OT_Initialize,
     SCN6_OT_Disconnect,
     SCN6_OT_Arm,
     SCN6_OT_Disarm,
+    SCN6AxisNode,
 )
 def register():
     for cls in classes:
-        try:
-            bpy.utils.register_class(cls)
-        except ValueError as exc:
-            if "already registered" in str(exc):
-                try:
-                    bpy.utils.unregister_class(cls)
-                except Exception:
-                    pass
-                bpy.utils.register_class(cls)
-            else:
-                raise
-    try:
-        bpy.types.NODE_MT_add.remove(scn6_node_menu)
-    except Exception:
-        pass
-    bpy.types.NODE_MT_add.append(scn6_node_menu)
-    try:
-        if not bpy.app.timers.is_registered(scn6_trajectory_timer):
-            bpy.app.timers.register(scn6_trajectory_timer, first_interval=0.1, persistent=False)
-    except Exception as exc:
-        print("[SCN6] trajectory timer registration error:", exc)
-    print("[SCN6] scn6_node_v5 registered.")
+        bpy.utils.register_class(cls)
+    if update_scn6_nodes not in bpy.app.timers:
+        bpy.app.timers.register(update_scn6_nodes, first_interval=0.1, persistent=True)
 def unregister():
-    try:
-        get_api().clear()
-        try:
-            get_api().disarm()
-        except Exception:
-            pass
-    except Exception:
-        pass
-    try:
-        bpy.types.NODE_MT_add.remove(scn6_node_menu)
-    except Exception:
-        pass
-    try:
-        if bpy.app.timers.is_registered(scn6_trajectory_timer):
-            bpy.app.timers.unregister(scn6_trajectory_timer)
-    except Exception:
-        pass
     stop_api()
+    try:
+        bpy.app.timers.unregister(update_scn6_nodes)
+    except Exception:
+        pass
     for cls in reversed(classes):
-        try:
-            bpy.utils.unregister_class(cls)
-        except Exception:
-            pass
-    print("[SCN6] scn6_node_v5 unregistered.")
+        bpy.utils.unregister_class(cls)
 if __name__ == "__main__":
     register()
