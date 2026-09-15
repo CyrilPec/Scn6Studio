@@ -1,3 +1,6 @@
+Write code without empty lines.
+Write full sentences for less scrolling.
+
 Scn6Studio/
 │
 ├── blender/
