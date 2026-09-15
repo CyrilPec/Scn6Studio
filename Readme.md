@@ -1,5 +1,6 @@
 Write code without empty lines.
 Write full sentences for less scrolling.
+All files in one directory, so file names define service and module.
 
 Scn6Studio/
 │
