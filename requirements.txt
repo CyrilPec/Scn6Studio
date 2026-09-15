@@ -4,3 +4,5 @@ for python 32:
 fastapi
 uvicorn
 pydantic
+httpx
+pytest
