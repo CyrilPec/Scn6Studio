@@ -7,22 +7,11 @@ Swagger: http://127.0.0.1:8000/docs
 from __future__ import annotations
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
 from scn6_api import SCN6API
+from scn6_models import MoveRequest, IncrementalMoveRequest, ArmRequest, WaitRequest
 from scn6_dll import SCN6Error, SCN6AxisError, SCN6CommunicationError, SCN6MotionError
 app = FastAPI(title="SCN6 Controller API", description="HTTP interface between Blender and the SCN6 controller.", version="4.0.0")
 api = SCN6API()
-class MoveRequest(BaseModel):
-    axis: int = Field(..., ge=0, le=15)
-    position: int
-class IncrementalMoveRequest(BaseModel):
-    axis: int = Field(..., ge=0, le=15)
-    distance: int
-class ArmRequest(BaseModel):
-    armed: bool
-class WaitRequest(BaseModel):
-    timeout: float = Field(30.0, gt=0)
-    interval: float = Field(0.05, gt=0)
 def check_axis(axis: int) -> None:
     if axis < 0 or axis > 15:
         raise HTTPException(status_code=400, detail="Axis must be between 0 and 15 (0..F)")
