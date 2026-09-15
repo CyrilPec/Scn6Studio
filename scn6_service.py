@@ -1,9 +1,13 @@
 from __future__ import annotations
 from typing import Optional
 from scn6_controller import SCN6Controller
+from scn6_simulated_controller import SimulatedSCN6Controller
 class SCN6Service:
-    def __init__(self, dll_path: Optional[str] = None, com_port: Optional[str] = None):
-        self.controller = SCN6Controller(dll_path=dll_path, com_port=com_port)
+    def __init__(self, dll_path: Optional[str] = None, com_port: Optional[str] = None, simulated: bool = False):
+        if simulated:
+            self.controller = SimulatedSCN6Controller()
+        else:
+            self.controller = SCN6Controller(dll_path=dll_path, com_port=com_port)
     def initialize(self):
         return self.controller.initialize()
     def disconnect(self):
