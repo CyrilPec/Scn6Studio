@@ -1292,6 +1292,104 @@ class TmbsController:
 
         return result
 
+    def move_point_number(
+        self,
+        axis_number: int,
+        point_number: int,
+    ) -> int:
+        """
+        Execute a stored PTP point.
+        """
+
+        self.require_initialized()
+
+        axis_number = self.require_connected_axis(
+            axis_number
+        )
+
+        point_number = int(point_number)
+
+        if point_number < 0:
+            raise ValueError(
+                "point_number must be >= 0."
+            )
+
+        if self.move_point is None:
+            raise SCN6MotionError(
+                "move_point export not present."
+            )
+
+        safe, status = self.axis_is_safe_to_move(
+            axis_number
+        )
+
+        if not safe:
+            raise SCN6MotionError(
+                f"axis {axis_number:X} is not safe "
+                f"to move; status={status}"
+            )
+
+        result = self.move_point(
+            axis_number,
+            point_number,
+        )
+
+        if result != SIO_DONE:
+            raise SCN6MotionError(
+                f"move_point failed "
+                f"(axis={axis_number:X}, "
+                f"point={point_number}, "
+                f"result={result})"
+            )
+
+        return result
+        
+    def jog(
+        self,
+        axis_number: int,
+        distance: int,
+    ) -> int:
+        """
+        Execute a JOG movement.
+        """
+
+        self.require_initialized()
+
+        axis_number = self.require_connected_axis(
+            axis_number
+        )
+
+        distance = int(distance)
+
+        if self.move_jog is None:
+            raise SCN6MotionError(
+                "move_jog export not present."
+            )
+
+        safe, status = self.axis_is_safe_to_move(
+            axis_number
+        )
+
+        if not safe:
+            raise SCN6MotionError(
+                f"axis {axis_number:X} is not safe "
+                f"to jog; status={status}"
+            )
+
+        result = self.move_jog(
+            axis_number,
+            ctypes.c_long(distance),
+        )
+
+        if result != SIO_DONE:
+            raise SCN6MotionError(
+                f"move_jog failed "
+                f"(axis={axis_number:X}, "
+                f"distance={distance}, "
+                f"result={result})"
+            )
+
+        return result
 
     # ========================================================================
     # PREPARED MOTION API
