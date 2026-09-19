@@ -400,7 +400,7 @@ class TmbsController:
                 ctypes.c_int,
                 ctypes.c_int,
             ]
-            self.move_org.restype = None
+            self.move_org.restype = ctypes.c_int
 
         self.move_rotate = getattr(
             controller,
