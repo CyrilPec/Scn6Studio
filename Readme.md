@@ -1,6 +1,7 @@
 Write code without empty lines.
 Write full sentences for less scrolling.
 All files in one directory, so file names define service and module.
+reference docs: TERMIBUS-EE06426I-EN.pdf TMBSCOM-EN.pdf an2k-028.pdf RC_Serial_Communication.pdf
 
 Scn6Studio/
 │
