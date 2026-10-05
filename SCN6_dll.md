@@ -1,3 +1,6 @@
+```mermaid
+graph LR
+
 TmbsController is_a Controller
 TmbsController uses TmbscomDLL
 TmbsController communicates_with SCN6Controller
@@ -62,3 +65,4 @@ read_parameter returns COMPACK
 read_point returns COMPACK
 write_parameter accepts COMPACK
 write_point accepts COMPACK
+```
