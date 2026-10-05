@@ -66,3 +66,43 @@ write_parameter-->accepts-->COMPACK
 write_point-->accepts-->COMPACK
 
 ```
+
+```mermaid
+graph LR
+TmbsController -->|uses| TmbscomDLL
+TmbsController -->|manages| Axis
+TmbsController -->|reads| AxisStatus
+TmbsController -->|performs| Motion
+TmbsController -->|accesses| Memory
+TmbsController -->|reads| Parameter
+TmbsController -->|reads| Point
+
+Motion -->|includes| AbsoluteMove
+Motion -->|includes| IncrementalMove
+Motion -->|includes| PointMove
+Motion -->|includes| Jog
+
+AbsoluteMove -->|changes| AxisPosition
+IncrementalMove -->|changes| AxisPosition
+PointMove -->|changes| AxisPosition
+Jog -->|changes| AxisPosition
+
+AxisStatus -->|contains| Servo
+AxisStatus -->|contains| Alarm
+AxisStatus -->|contains| Origin
+AxisStatus -->|contains| PFIN
+
+Motion -->|requires| Connected
+Motion -->|requires| Servo
+Motion -->|checks| Alarm
+
+TmbsController -->|uses| COMPACK
+COMPACK -->|contains| Address
+COMPACK -->|contains| Data
+
+Memory -->|contains| VirtualMemory
+Memory -->|contains| Parameter
+Memory -->|contains| Point
+
+TmbscomDLL -->|controls| SCN6Controller
+```
