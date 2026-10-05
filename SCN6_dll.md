@@ -1,3 +1,4 @@
+```mermaid
 graph LR
     TmbsController -->|is_a| Controller
     TmbsController -->|uses| TmbscomDLL
