@@ -1,7 +1,7 @@
 ```mermaid
 graph LR
 
-TmbsController is_a Controller
+TmbsController isa Controller
 TmbsController uses TmbscomDLL
 TmbsController communicates_with SCN6Controller
 
