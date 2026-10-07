@@ -1,6 +1,8 @@
 # Scn6Studio
 Graphic editor for controller. 
 
+```mermaid
+graph LR
 classDiagram
 
     class SCN6Error {
@@ -104,3 +106,4 @@ classDiagram
     TmbsController ..> SCN6AxisError : raises
     TmbsController ..> SCN6CommunicationError : raises
     TmbsController ..> SCN6NotInitializedError : raises
+```
