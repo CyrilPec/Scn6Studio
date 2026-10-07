@@ -6,7 +6,6 @@ graph LR
 classDiagram
 
     class SCN6Error {
-        <<Exception>>
         Base SCN6 API exception
     }
 
