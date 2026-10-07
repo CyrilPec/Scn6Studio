@@ -61,8 +61,8 @@ graph LR
     COMPACK -->|contains| Address
     COMPACK -->|contains| Data
 
-    read_parameter -->|returns| COMPACK
-    read_point -->|returns| COMPACK
+    read_parameter <-->|returns| COMPACK
+    read_point <-->|returns| COMPACK
     write_parameter -->|accepts| COMPACK
     write_point -->|accepts| COMPACK
 
