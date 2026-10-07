@@ -1,5 +1,5 @@
 # Scn6Studio
-Graphic editor for controller. 
+#Graphic editor for controller. 
 
 ```mermaid
 graph LR
