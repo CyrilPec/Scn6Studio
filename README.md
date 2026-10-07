@@ -2,7 +2,7 @@
 #Graphic editor for controller. 
 
 ```mermaid
-graph LR
+
 classDiagram
 
     class SCN6Error {
