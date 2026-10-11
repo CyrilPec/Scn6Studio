@@ -1,55 +1,26 @@
 ```mermaid
 
-classDiagram
-    direction TB
+flowchart TD
+    Server["scn6_server.py<br/>HTTP endpoints"]
+    Models["scn6_models.py<br/>Pydantic request/response models"]
+    API["scn6_api.py<br/>API facade"]
+    Service["scn6_service.py<br/>Service layer"]
+    Controller["scn6_controller.py<br/>Hardware controller and safety"]
+    Simulated["scn6_simulated_controller.py<br/>Simulation"]
+    DLL["scn6_dll.py<br/>TmbsController and DLL bindings"]
+    Native["Tmbscom.DLL"]
+    Hardware["SCN6 hardware"]
 
-    class FastAPIApp {
-        +initialize()
-        +register_routes()
-    }
+    Server --> API
+    Server --> Models
+    Server --> Service
+    API --> Service
+    Service --> Controller
+    Service --> Simulated
+    Controller --> DLL
+    DLL --> Native
+    Native --> Hardware
 
-    class APIRouter {
-        +get()
-        +post()
-        +put()
-        +delete()
-    }
-
-    class Controller {
-        +handle_request()
-        +validate_input()
-    }
-
-    class Service {
-        +execute_operation()
-        +apply_business_rules()
-    }
-
-    class Repository {
-        +find_by_id()
-        +save()
-        +update()
-        +delete()
-    }
-
-    class Model {
-        +id
-        +attributes
-    }
-
-    class Database {
-        +connect()
-        +execute_query()
-    }
-
-    FastAPIApp o-- APIRouter : registers , The application registers its endpoints.
-    APIRouter --> Controller : routes requests , Incoming HTTP requests are dispatched to handlers.
-    Controller --> Service : delegates , Request handling delegates business logic.
-    Service --> Repository : accesses data ,  Data access is separated from business rules.
-    Repository --> Model : maps data , The repository works with data models and persistence.
-    Repository --> Database : queries
-
-```
 classDiagram
     direction TB
 
@@ -128,5 +99,4 @@ classDiagram
     SCN6Error <|-- SCN6AxisError
     SCN6Error <|-- SCN6CommunicationError
     SCN6Error <|-- SCN6MotionError
-```
 ```
