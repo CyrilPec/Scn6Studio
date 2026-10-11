@@ -1,4 +1,4 @@
-mermaid
+```mermaid
 
 classDiagram
     direction TB
@@ -48,3 +48,4 @@ classDiagram
     Service --> Repository : accesses data ,  Data access is separated from business rules.
     Repository |The repository works with data models and persistence.|--> Model : maps data 
     Repository --> Database : queries
+```
