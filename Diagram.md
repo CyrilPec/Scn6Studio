@@ -46,6 +46,6 @@ classDiagram
     APIRouter --> Controller : routes requests , Incoming HTTP requests are dispatched to handlers.
     Controller --> Service : delegates , Request handling delegates business logic.
     Service --> Repository : accesses data ,  Data access is separated from business rules.
-    Repository --|The repository works with data models and persistence.|> Model : maps data 
+    Repository --> Model : maps data , The repository works with data models and persistence.
     Repository --> Database : queries
 ```
