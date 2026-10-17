@@ -1,3 +1,0 @@
-SCN6 node ─┐
-VFD node  ─┼──→ FastAPI hardware server to SCN6 + VFD + other drivers
-Other node ┘
