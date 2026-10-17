@@ -813,7 +813,7 @@ class TmbsController:
             raise ValueError("poll_interval must be > 0.")
         if retry_delay < 0:
             raise ValueError("retry_delay must be >= 0.")
-    ) -> list[int]:
+    )
         """
         Initialize TMBSCOM and discover axes.
         TMBSCOM initialization can initially report OPENING.
