@@ -756,7 +756,7 @@ class TmbsController:
             self.save_point.restype = ctypes.c_int
 
 
-      def available_dll_functions(self) -> list[str]:
+    def available_dll_functions(self) -> list[str]:
         return sorted(
             name
             for name, function in self.dll_functions.items()
