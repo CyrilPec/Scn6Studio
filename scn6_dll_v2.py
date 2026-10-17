@@ -804,6 +804,11 @@ class TmbsController:
         }
     def initialize(
         self,
+        timeout: float = 2.0,
+        poll_interval: float = 0.005,
+        retry_delay: float = 1.0,
+    ) -> list[int]:
+        """Your existing initialize docstring."""
         timeout = float(timeout)
         poll_interval = float(poll_interval)
         retry_delay = float(retry_delay)
@@ -813,7 +818,6 @@ class TmbsController:
             raise ValueError("poll_interval must be > 0.")
         if retry_delay < 0:
             raise ValueError("retry_delay must be >= 0.")
-    )
         """
         Initialize TMBSCOM and discover axes.
         TMBSCOM initialization can initially report OPENING.
