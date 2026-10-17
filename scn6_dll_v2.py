@@ -804,9 +804,15 @@ class TmbsController:
         }
     def initialize(
         self,
-        timeout: float = 2.0,
-        poll_interval: float = 0.005,
-        retry_delay: float = 1.0,
+        timeout = float(timeout)
+        poll_interval = float(poll_interval)
+        retry_delay = float(retry_delay)
+        if timeout <= 0:
+            raise ValueError("timeout must be > 0.")
+        if poll_interval <= 0:
+            raise ValueError("poll_interval must be > 0.")
+        if retry_delay < 0:
+            raise ValueError("retry_delay must be >= 0.")
     ) -> list[int]:
         """
         Initialize TMBSCOM and discover axes.
@@ -1392,23 +1398,12 @@ class TmbsController:
         interval: float = 0.05,
     ) -> bool:
         self.require_initialized()
-        timeout = float(timeout)      
-        poll_interval = float(poll_interval)
-        retry_delay = float(retry_delay)
-        if timeout <= 0:
-            raise ValueError("timeout must be > 0.")
-        if poll_interval <= 0:
-            raise ValueError("poll_interval must be > 0.")
-        if retry_delay < 0:
-            raise ValueError("retry_delay must be >= 0.")
         timeout = float(timeout)
         interval = float(interval)
         if timeout <= 0:
             raise ValueError("timeout must be > 0.")
         if interval <= 0:
             raise ValueError("interval must be > 0.")
-        axes_to_monitor = self.prepared_axes()
-        interval = float(interval)
         axes_to_monitor = self.prepared_axes()
         if not axes_to_monitor:
             raise SCN6MotionError(
