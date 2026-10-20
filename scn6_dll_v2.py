@@ -895,9 +895,11 @@ class TmbsController:
     def disconnect(self) -> int:
         """
         Close TMBSCOM.
+        This clears local tracking only; it does not stop physical motion.
         """
         result = self.close_tmbs()
         self.initialized = False
+        self.active_motion_axes.clear()
         for axis_state in self.axes.values():
             axis_state.connected = False
         return result
@@ -932,11 +934,6 @@ class TmbsController:
     # ========================================================================
     def refresh_connected_axes(self) -> int:
         self.require_initialized()
-        if self.active_motion_axes:
-            raise SCN6MotionError(
-                "Previous prepared moves are still active. "
-                "Wait for them to finish before starting another batch."
-            )
         axis_array = (
             ctypes.c_ushort * MAX_AXIS_COUNT
         )()
@@ -1323,26 +1320,21 @@ class TmbsController:
         ]
     def start_prepared_moves(self) -> bool:
         self.require_initialized()
+        if self.active_motion_axes:
+            raise SCN6MotionError(
+                "Previous prepared moves are still active. "
+                "Wait for them to finish before starting another batch."
+            )
         axes_to_move = self.prepared_axes()
         if not axes_to_move:
             raise SCN6MotionError(
                 "no prepared axes."
             )
-        # ------------------------------------------------------------
-        # Safety preflight.
-        #
-        # Nothing should physically move before every participating
-        # axis has passed the safety check.
-        # ------------------------------------------------------------
+        # Safety preflight: check every axis before dispatching any move.
         for axis_number in axes_to_move:
-            safe, status = (
-                self.axis_is_safe_to_move(
-                    axis_number
-                )
+            safe, status = self.axis_is_safe_to_move(
+                axis_number
             )
-            self.active_motion_axes.add(axis_number)
-            state.prepared_motion = None
-            state.prepared_value = None
             if not safe:
                 raise SCN6MotionError(
                     f"prepared move aborted: "
@@ -1352,9 +1344,7 @@ class TmbsController:
                 )
         all_accepted = True
         for axis_number in axes_to_move:
-            state = self.axes[
-                axis_number
-            ]
+            state = self.axes[axis_number]
             if state.prepared_motion == "absolute":
                 if self.move_abs is None:
                     raise SCN6MotionError(
@@ -1362,14 +1352,10 @@ class TmbsController:
                     )
                 result = self.move_abs(
                     axis_number,
-                    ctypes.c_long(
-                        state.prepared_value
-                    ),
+                    ctypes.c_long(state.prepared_value),
                 )
                 if result == SIO_DONE:
-                    state.commanded_position = (
-                        state.prepared_value
-                    )
+                    state.commanded_position = state.prepared_value
             elif state.prepared_motion == "incremental":
                 if self.move_inc is None:
                     raise SCN6MotionError(
@@ -1377,18 +1363,11 @@ class TmbsController:
                     )
                 result = self.move_inc(
                     axis_number,
-                    ctypes.c_long(
-                        state.prepared_value
-                    ),
+                    ctypes.c_long(state.prepared_value),
                 )
                 if result == SIO_DONE:
-                    if (
-                        state.commanded_position
-                        is not None
-                    ):
-                        state.commanded_position += (
-                            state.prepared_value
-                        )
+                    if state.commanded_position is not None:
+                        state.commanded_position += state.prepared_value
             else:
                 raise SCN6MotionError(
                     f"unknown prepared operation "
@@ -1401,6 +1380,9 @@ class TmbsController:
                     f"did not accept movement "
                     f"(result={result})"
                 )
+            self.active_motion_axes.add(axis_number)
+            state.prepared_motion = None
+            state.prepared_value = None
         return all_accepted
     # ========================================================================
     # WAIT API
