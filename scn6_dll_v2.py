@@ -333,6 +333,7 @@ class TmbsController:
             for axis_number in AXIS_NUMBERS
         }
         self.last_status = {}
+        self.active_motion_axes = set()
         self.bind_dll_functions()
     # ========================================================================
     # DLL BINDINGS
@@ -846,6 +847,7 @@ class TmbsController:
         if current_state in (-12, 2):
             self.axes_info = list(axis_array)
             self.initialized = False
+            self.active_motion_axes.clear()
             raise SCN6CommunicationError(
                 "TMBSCOM initialization failed "
                 f"(state={current_state}, "
@@ -930,6 +932,11 @@ class TmbsController:
     # ========================================================================
     def refresh_connected_axes(self) -> int:
         self.require_initialized()
+        if self.active_motion_axes:
+            raise SCN6MotionError(
+                "Previous prepared moves are still active. "
+                "Wait for them to finish before starting another batch."
+            )
         axis_array = (
             ctypes.c_ushort * MAX_AXIS_COUNT
         )()
@@ -1333,6 +1340,9 @@ class TmbsController:
                     axis_number
                 )
             )
+            self.active_motion_axes.add(axis_number)
+            state.prepared_motion = None
+            state.prepared_value = None
             if not safe:
                 raise SCN6MotionError(
                     f"prepared move aborted: "
@@ -1407,10 +1417,11 @@ class TmbsController:
             raise ValueError("timeout must be > 0.")
         if interval <= 0:
             raise ValueError("interval must be > 0.")
-        axes_to_monitor = self.prepared_axes()
+        axes_to_monitor = sorted(self.active_motion_axes)
         if not axes_to_monitor:
             raise SCN6MotionError(
-                "no prepared axes to monitor."
+                "No active prepared moves to monitor. "
+                "Call start_prepared_moves() first."
             )
         start_time = time.monotonic()
         while (
@@ -1422,6 +1433,11 @@ class TmbsController:
                 status = self.read_axis_status(
                     axis_number
                 )
+                if status["result"] != SIO_DONE:
+                    raise SCN6CommunicationError(
+                        f"Could not read status for axis "
+                        f"{axis_number:X}; result={status['result']}"
+                    )
                 if status["alarm"] == SIO_DONE:
                     raise SCN6MotionError(
                         f"alarm detected on "
@@ -1430,6 +1446,9 @@ class TmbsController:
                 if status["pfin"] != SIO_DONE:
                     all_finished = False
             if all_finished:
+                self.active_motion_axes.difference_update(
+                    axes_to_monitor
+                )
                 return True
             time.sleep(interval)
         return False
