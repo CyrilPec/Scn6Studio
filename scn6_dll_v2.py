@@ -700,30 +700,30 @@ class TmbsController:
                 ctypes.POINTER(COMPACK),
             ]
             self.write_param.restype = ctypes.c_int
-        self.read_point = getattr(
+        self.dll_read_point = getattr(
             controller,
             "read_point",
             None,
         )
-        if self.read_point:
-            self.read_point.argtypes = [
+        if self.dll_read_point:
+            self.dll_read_point.argtypes = [
                 ctypes.c_int,
                 ctypes.c_int,
                 ctypes.POINTER(COMPACK),
             ]
-            self.read_point.restype = ctypes.c_int
-        self.write_point = getattr(
+            self.dll_read_point.restype = ctypes.c_int
+        self.dll_write_point = getattr(
             controller,
             "write_point",
             None,
         )
-        if self.write_point:
-            self.write_point.argtypes = [
+        if self.dll_write_point:
+            self.dll_write_point.argtypes = [
                 ctypes.c_int,
                 ctypes.c_int,
                 ctypes.POINTER(COMPACK),
             ]
-            self.write_point.restype = ctypes.c_int
+            self.dll_write_point.restype = ctypes.c_int
         self.load_param = getattr(
             controller,
             "load_param",
@@ -808,7 +808,11 @@ class TmbsController:
         poll_interval: float = 0.005,
         retry_delay: float = 1.0,
     ) -> list[int]:
-        """Your existing initialize docstring."""
+        """
+        Initialize TMBSCOM and discover axes.
+        TMBSCOM initialization can initially report OPENING.
+        The existing two-stage initialization behavior is preserved.
+        """
         timeout = float(timeout)
         poll_interval = float(poll_interval)
         retry_delay = float(retry_delay)
@@ -818,11 +822,6 @@ class TmbsController:
             raise ValueError("poll_interval must be > 0.")
         if retry_delay < 0:
             raise ValueError("retry_delay must be >= 0.")
-        """
-        Initialize TMBSCOM and discover axes.
-        TMBSCOM initialization can initially report OPENING.
-        The existing two-stage initialization behavior is preserved.
-        """
         axis_array = (
             ctypes.c_int * MAX_AXIS_COUNT
         )(
@@ -1552,12 +1551,12 @@ class TmbsController:
         axis_number = self.require_axis(
             axis_number
         )
-        if self.read_point is None:
+        if self.dll_read_point is None:
             raise SCN6CommunicationError(
                 "read_point export not present."
             )
         packet = create_empty_compack()
-        result = self.read_point(
+        result = self.dll_read_point(
             axis_number,
             int(point_number),
             ctypes.byref(packet),
@@ -1580,11 +1579,11 @@ class TmbsController:
         axis_number = self.require_axis(
             axis_number
         )
-        if self.write_point is None:
+        if self.dll_write_point is None:
             raise SCN6CommunicationError(
                 "write_point export not present."
             )
-        result = self.write_point(
+        result = self.dll_write_point(
             axis_number,
             int(point_number),
             ctypes.byref(packet),
